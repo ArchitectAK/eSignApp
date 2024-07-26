@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "express": "^4.19.2",
+    "express-fileupload": "^1.5.1",
+    "pdf-lib": "^1.17.1",
+    "ws": "^8.18.0"
+  }
+}

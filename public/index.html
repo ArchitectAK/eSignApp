@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Signature Pad and PDF Operations</title>
+    <style>
+        canvas {
+            border: 1px solid black;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.16.0/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+    <h2>Signature Pad</h2>
+    <canvas id="signature-pad" width="400" height="200"></canvas>
+    <button id="clear">Clear</button>
+    <button id="apply-signature">Apply Signature</button>
+    <h2>Upload PDF</h2>
+    <input type="file" id="upload-pdf" accept="application/pdf">
+    <button id="download-pdf">Download PDF</button>
+    <div id="qrcode"></div>
+
+    <script>
+        let isDrawing = false;
+        const canvas = document.getElementById('signature-pad');
+        const ctx = canvas.getContext('2d');
+        ctx.strokeStyle = '#000000'; // Default black color for the signature
+
+        const serverURL = 'http://192.168.29.117:3000'; // Ensure this matches your server URL
+
+        let sessionID = generateSessionID();
+        let ws;
+
+        // WebSocket connection
+        function setupWebSocket(sessionID) {
+            ws = new WebSocket(`ws://192.168.29.117:3000?sessionId=${sessionID}`);
+            ws.onmessage = (event) => {
+                const signatureData = JSON.parse(event.data);
+                if (signatureData.clear) {
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
+                } else {
+                    drawSignature(signatureData);
+                }
+            };
+        }
+
+        setupWebSocket(sessionID);
+
+        function getTouchPos(canvas, touchEvent) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: touchEvent.touches[0].clientX - rect.left,
+                y: touchEvent.touches[0].clientY - rect.top
+            };
+        }
+
+        function sendSignatureData(data) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify(data));
+            }
+        }
+
+        function drawSignature({ x, y, moveTo }) {
+            if (moveTo) {
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+            } else {
+                ctx.lineTo(x, y);
+                ctx.stroke();
+            }
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            const pos = { x: e.offsetX, y: e.offsetY, moveTo: true };
+            drawSignature(pos);
+            sendSignatureData(pos);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+            const pos = { x: e.offsetX, y: e.offsetY, moveTo: false };
+            drawSignature(pos);
+            sendSignatureData(pos);
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDrawing = false;
+        });
+
+        canvas.addEventListener('mouseout', () => {
+            isDrawing = false;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touchPos = getTouchPos(canvas, e);
+            isDrawing = true;
+            const pos = { x: touchPos.x, y: touchPos.y, moveTo: true };
+            drawSignature(pos);
+            sendSignatureData(pos);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!isDrawing) return;
+            const touchPos = getTouchPos(canvas, e);
+            const pos = { x: touchPos.x, y: touchPos.y, moveTo: false };
+            drawSignature(pos);
+            sendSignatureData(pos);
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isDrawing = false;
+        });
+
+        canvas.addEventListener('touchcancel', () => {
+            isDrawing = false;
+        });
+
+        document.getElementById('clear').addEventListener('click', () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            isDrawing = false; // Ensure drawing stops when clearing the canvas
+            sendSignatureData({ clear: true });
+        });
+
+        document.getElementById('upload-pdf').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const formData = new FormData();
+                formData.append('file', file);
+                formData.append('sessionID', sessionID);
+
+                await fetch(`${serverURL}/upload`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const sessionURL = generateSessionURL(sessionID);
+                generateQRCode(sessionURL);
+            }
+        });
+
+        document.getElementById('apply-signature').addEventListener('click', async () => {
+            const signatureData = canvas.toDataURL('image/png');
+            await fetch(`${serverURL}/apply-signature`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionID, signatureData })
+            });
+            alert('Your signature has been sent.');
+        });
+
+        document.getElementById('download-pdf').addEventListener('click', async () => {
+            try {
+                const response = await fetch(`${serverURL}/download?sessionID=${sessionID}`);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = 'signed_document.pdf';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                } else {
+                    const errorText = await response.text();
+                    alert(`Failed to download PDF: ${errorText}`);
+                }
+            } catch (error) {
+                alert(`Error occurred: ${error.message}`);
+            }
+        });
+
+        function generateSessionID() {
+            return Math.random().toString(36).substring(2);
+        }
+
+        function generateSessionURL(sessionID) {
+            return `${window.location.origin}${window.location.pathname}?sessionId=${sessionID}`;
+        }
+
+        function generateQRCode(url) {
+            const qrCodeContainer = document.getElementById('qrcode');
+            qrCodeContainer.innerHTML = ''; // Clear existing QR code
+            new QRCode(qrCodeContainer, {
+                text: url,
+                width: 128,
+                height: 128
+            });
+        }
+
+        // Check if there is a session ID in the URL
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('sessionId')) {
+            sessionID = urlParams.get('sessionId');
+            document.getElementById('qrcode').style.display = 'none';
+            setupWebSocket(sessionID);
+        }
+    </script>
+</body>
+</html>
