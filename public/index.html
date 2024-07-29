@@ -16,25 +16,28 @@
     <canvas id="signature-pad" width="400" height="200"></canvas>
     <button id="clear">Clear</button>
     <button id="apply-signature">Apply Signature</button>
+    
     <h2>Upload PDF</h2>
     <input type="file" id="upload-pdf" accept="application/pdf">
     <button id="download-pdf">Download PDF</button>
     <div id="qrcode"></div>
 
     <script>
+        const serverURL = 'http://localhost:3000'; // Ensure this matches your server URL
+        let sessionID = generateSessionID();
+        let ws;
         let isDrawing = false;
+
         const canvas = document.getElementById('signature-pad');
         const ctx = canvas.getContext('2d');
         ctx.strokeStyle = '#000000'; // Default black color for the signature
 
-        const serverURL = 'http://192.168.29.117:3000'; // Ensure this matches your server URL
+        setupWebSocket(sessionID);
+        setupCanvasEventListeners();
+        setupButtonEventListeners();
 
-        let sessionID = generateSessionID();
-        let ws;
-
-        // WebSocket connection
         function setupWebSocket(sessionID) {
-            ws = new WebSocket(`ws://192.168.29.117:3000?sessionId=${sessionID}`);
+            ws = new WebSocket(`ws://localhost:3000?sessionId=${sessionID}`);
             ws.onmessage = (event) => {
                 const signatureData = JSON.parse(event.data);
                 if (signatureData.clear) {
@@ -45,13 +48,54 @@
             };
         }
 
-        setupWebSocket(sessionID);
+        function setupCanvasEventListeners() {
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mouseout', stopDrawing);
+            canvas.addEventListener('touchstart', startDrawing);
+            canvas.addEventListener('touchmove', draw);
+            canvas.addEventListener('touchend', stopDrawing);
+            canvas.addEventListener('touchcancel', stopDrawing);
+        }
 
-        function getTouchPos(canvas, touchEvent) {
+        function setupButtonEventListeners() {
+            document.getElementById('clear').addEventListener('click', clearCanvas);
+            document.getElementById('upload-pdf').addEventListener('change', uploadPDF);
+            document.getElementById('apply-signature').addEventListener('click', applySignature);
+            document.getElementById('download-pdf').addEventListener('click', downloadPDF);
+        }
+
+        function startDrawing(e) {
+            isDrawing = true;
+            const pos = getPosition(e);
+            drawSignature({ ...pos, moveTo: true });
+            sendSignatureData({ ...pos, moveTo: true });
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            const pos = getPosition(e);
+            drawSignature(pos);
+            sendSignatureData(pos);
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+        }
+
+        function clearCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            isDrawing = false;
+            sendSignatureData({ clear: true });
+        }
+
+        function getPosition(event) {
             const rect = canvas.getBoundingClientRect();
+            const { clientX, clientY } = event.touches ? event.touches[0] : event;
             return {
-                x: touchEvent.touches[0].clientX - rect.left,
-                y: touchEvent.touches[0].clientY - rect.top
+                x: clientX - rect.left,
+                y: clientY - rect.top
             };
         }
 
@@ -71,88 +115,42 @@
             }
         }
 
-        canvas.addEventListener('mousedown', (e) => {
-            isDrawing = true;
-            const pos = { x: e.offsetX, y: e.offsetY, moveTo: true };
-            drawSignature(pos);
-            sendSignatureData(pos);
-        });
-
-        canvas.addEventListener('mousemove', (e) => {
-            if (!isDrawing) return;
-            const pos = { x: e.offsetX, y: e.offsetY, moveTo: false };
-            drawSignature(pos);
-            sendSignatureData(pos);
-        });
-
-        canvas.addEventListener('mouseup', () => {
-            isDrawing = false;
-        });
-
-        canvas.addEventListener('mouseout', () => {
-            isDrawing = false;
-        });
-
-        canvas.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            const touchPos = getTouchPos(canvas, e);
-            isDrawing = true;
-            const pos = { x: touchPos.x, y: touchPos.y, moveTo: true };
-            drawSignature(pos);
-            sendSignatureData(pos);
-        });
-
-        canvas.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            if (!isDrawing) return;
-            const touchPos = getTouchPos(canvas, e);
-            const pos = { x: touchPos.x, y: touchPos.y, moveTo: false };
-            drawSignature(pos);
-            sendSignatureData(pos);
-        });
-
-        canvas.addEventListener('touchend', () => {
-            isDrawing = false;
-        });
-
-        canvas.addEventListener('touchcancel', () => {
-            isDrawing = false;
-        });
-
-        document.getElementById('clear').addEventListener('click', () => {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            isDrawing = false; // Ensure drawing stops when clearing the canvas
-            sendSignatureData({ clear: true });
-        });
-
-        document.getElementById('upload-pdf').addEventListener('change', async (e) => {
+        async function uploadPDF(e) {
             const file = e.target.files[0];
             if (file) {
                 const formData = new FormData();
                 formData.append('file', file);
                 formData.append('sessionID', sessionID);
 
-                await fetch(`${serverURL}/upload`, {
+                const response = await fetch(`${serverURL}/upload`, {
                     method: 'POST',
                     body: formData
                 });
 
-                const sessionURL = generateSessionURL(sessionID);
-                generateQRCode(sessionURL);
+                if (response.ok) {
+                    generateQRCode(generateSessionURL(sessionID));
+                } else {
+                    alert('Failed to upload PDF');
+                }
             }
-        });
+        }
 
-        document.getElementById('apply-signature').addEventListener('click', async () => {
+        async function applySignature() {
             const signatureData = canvas.toDataURL('image/png');
-            await fetch(`${serverURL}/apply-signature`, {
+            const response = await fetch(`${serverURL}/apply-signature`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sessionID, signatureData })
             });
-            alert('Your signature has been sent.');
-        });
 
-        document.getElementById('download-pdf').addEventListener('click', async () => {
+            if (response.ok) {
+                alert('Your signature has been applied.');
+            } else {
+                alert('Failed to apply signature');
+            }
+        }
+
+        async function downloadPDF() {
             try {
                 const response = await fetch(`${serverURL}/download?sessionID=${sessionID}`);
                 if (response.ok) {
@@ -170,7 +168,7 @@
             } catch (error) {
                 alert(`Error occurred: ${error.message}`);
             }
-        });
+        }
 
         function generateSessionID() {
             return Math.random().toString(36).substring(2);
