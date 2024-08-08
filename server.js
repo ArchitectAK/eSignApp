@@ -4,13 +4,12 @@ const fs = require('fs');
 const path = require('path');
 const { PDFDocument } = require('pdf-lib');
 const WebSocket = require('ws');
-const cors = require('cors');
 
 const app = express();
 app.use(express.json());
 app.use(fileUpload());
 app.use(express.static('public'));
-app.use(cors()); // Enable CORS
+
 
 const uploadsPath = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsPath)) {
@@ -72,8 +71,8 @@ app.get('/download', (req, res) => {
     }
 });
 
-const server = app.listen(process.env.PORT || 3000, '0.0.0.0', () => {
-    console.log('Server running on 3000');
+const server = app.listen(3000, '0.0.0.0', () => {
+    console.log('Server running on http://192.168.29.117:3000');
 });
 
 const wss = new WebSocket.Server({ server });

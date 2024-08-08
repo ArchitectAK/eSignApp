@@ -2,42 +2,184 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Signature Pad and PDF Operations</title>
+    <title>DocQsign</title>
+    <link rel="icon" href="https://docucdn-a.akamaihd.net/olive/images/2.64.0/global-assets/ds-icons-favicon-default-64x64.svg" type="image/svg+xml">
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap');
+        @font-face {
+            font-family: 'DS Indigo';
+            src: url('https://assets.website-files.com/65ea02c6577073f7737d9c43/65f2ec19c4f399ec8c5b1e0b_dsindigo-regular.otf') format('opentype');
+            font-weight: 400;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'DS Indigo';
+            src: url('https://assets.website-files.com/65ea02c6577073f7737d9c43/65f2ec199eee881fc304e32d_dsindigo-semibold.otf') format('opentype');
+            font-weight: 600;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'DS Indigo';
+            src: url('https://assets.website-files.com/65ea02c6577073f7737d9c43/65f2ec1963169276ae1af7a6_dsindigo-medium.otf') format('opentype');
+            font-weight: 500;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'DS Indigo Nova BB';
+            src: url('https://assets.website-files.com/65ea02c6577073f7737d9c43/65f2ec194627127525a55775_DSIndigoNovaBB-Light320.otf') format('opentype');
+            font-weight: 300;
+            font-style: normal;
+            font-display: swap;
+        }
+        @font-face {
+            font-family: 'DS Indigo';
+            src: url('https://assets.website-files.com/65ea02c6577073f7737d9c43/65f2ec19e4d35b2f0ae19d28_dsindigo-bold.otf') format('opentype');
+            font-weight: 700;
+            font-style: normal;
+            font-display: swap;
+        }
+
+
+        body {
+            font-family: 'DS Indigo', sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+
+        h2 {
+            font-family: 'DS Indigo Nova BB', sans-serif;
+            color: #003366;
+        }
+
         canvas {
-            border: 1px solid black;
+            font-family: 'DS Indigo Nova BB', sans-serif;
+            border: 2px solid #003366;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        button, input[type="file"] {
+            font-family: 'DS Indigo Nova BB', sans-serif;
+            background-color: #ffcc00;
+            color: #003366;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+        }
+
+        button:hover, input[type="file"]:hover {
+             font-family: 'DS Indigo Nova BB', sans-serif;
+            background-color: #e6b800;
+        }
+        .button-container {
+            display: flex;
+            gap: 10px;
+        }
+
+        .button-container button, 
+        .button-container input[type="file"] {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        .button-container input[type="file"] {
+            width: auto; /* Adjust width as needed */
+        }
+        .logo {
+            display: block;
+            margin: 1px auto;
+            max-width: 150px; /* Adjust as needed */
+            height: auto;
+        }
+        .signature-container {
+            display: flex;
+            align-items: center;
+            gap: 10px; /* Adjust gap as needed */
+        }
+
+
+        #qrcode {
+            margin-top: 20px;
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qr-code-styling/lib/qr-code-styling.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.16.0/pdf-lib.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Code Generator</title>
+    <link rel="icon" href=docu-logo.png" type="image/x-icon">
 </head>
 <body>
-    <h2>Signature Pad</h2>
-    <canvas id="signature-pad" width="400" height="200"></canvas>
-    <button id="clear">Clear</button>
-    <button id="apply-signature">Apply Signature</button>
-    
+    <img src="docusign-logo.png" alt="DocQSign Logo" class="logo">
+    <h2>DocQsign</h2>
+    <div class="signature-container"></div>
+        <canvas id="signature-pad" width="400" height="200"></canvas>
+        <div id="qrcode"></div>
+        <p id="qr-message" style="display: none;">Scan from your mobile to sign</p>
+    </div>
+    <div class="button-container">
+        <button id="clear">Clear</button>
+        <button id="apply-signature">Apply Signature</button>
+    </div>
     <h2>Upload PDF</h2>
+    <div class="button-container">
     <input type="file" id="upload-pdf" accept="application/pdf">
     <button id="download-pdf">Download PDF</button>
-    <div id="qrcode"></div>
-
+    </div>
+    
     <script>
-        const serverURL = 'http://localhost:3000'; // Ensure this matches your server URL
-        let sessionID = generateSessionID();
-        let ws;
         let isDrawing = false;
-
         const canvas = document.getElementById('signature-pad');
         const ctx = canvas.getContext('2d');
         ctx.strokeStyle = '#000000'; // Default black color for the signature
+        ctx.lineWidth = 2; // Set the pen thickness (adjust as needed)
 
-        setupWebSocket(sessionID);
-        setupCanvasEventListeners();
-        setupButtonEventListeners();
+        function getConfig() {
+            const xhr = new XMLHttpRequest();
+            xhr.open('GET', '/config.json', false); // false makes the request synchronous
+            xhr.send(null);
+            if (xhr.status === 200) {
+                return JSON.parse(xhr.responseText);
+            } else {
+                console.error('Failed to load config.json');
+                return null;
+            }
+        }
+
+        let ipAddress;
+        let serverURL;
+
+        function initialize() {
+            const config = getConfig();
+            if (config) {
+                ipAddress = window.location.hostname;
+                serverURL = `http://${ipAddress}:3000`;
+                console.log(ipAddress);
+                console.log(serverURL);
+            }
+        }
+
+        initialize();
+        let sessionID = generateSessionID();
+        let ws;
 
         function setupWebSocket(sessionID) {
-            ws = new WebSocket(`ws://localhost:3000?sessionId=${sessionID}`);
+            ws = new WebSocket(`ws://${ipAddress}:3000?sessionId=${sessionID}`);
             ws.onmessage = (event) => {
                 const signatureData = JSON.parse(event.data);
                 if (signatureData.clear) {
@@ -48,54 +190,13 @@
             };
         }
 
-        function setupCanvasEventListeners() {
-            canvas.addEventListener('mousedown', startDrawing);
-            canvas.addEventListener('mousemove', draw);
-            canvas.addEventListener('mouseup', stopDrawing);
-            canvas.addEventListener('mouseout', stopDrawing);
-            canvas.addEventListener('touchstart', startDrawing);
-            canvas.addEventListener('touchmove', draw);
-            canvas.addEventListener('touchend', stopDrawing);
-            canvas.addEventListener('touchcancel', stopDrawing);
-        }
+        setupWebSocket(sessionID);
 
-        function setupButtonEventListeners() {
-            document.getElementById('clear').addEventListener('click', clearCanvas);
-            document.getElementById('upload-pdf').addEventListener('change', uploadPDF);
-            document.getElementById('apply-signature').addEventListener('click', applySignature);
-            document.getElementById('download-pdf').addEventListener('click', downloadPDF);
-        }
-
-        function startDrawing(e) {
-            isDrawing = true;
-            const pos = getPosition(e);
-            drawSignature({ ...pos, moveTo: true });
-            sendSignatureData({ ...pos, moveTo: true });
-        }
-
-        function draw(e) {
-            if (!isDrawing) return;
-            const pos = getPosition(e);
-            drawSignature(pos);
-            sendSignatureData(pos);
-        }
-
-        function stopDrawing() {
-            isDrawing = false;
-        }
-
-        function clearCanvas() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            isDrawing = false;
-            sendSignatureData({ clear: true });
-        }
-
-        function getPosition(event) {
+        function getTouchPos(canvas, touchEvent) {
             const rect = canvas.getBoundingClientRect();
-            const { clientX, clientY } = event.touches ? event.touches[0] : event;
             return {
-                x: clientX - rect.left,
-                y: clientY - rect.top
+                x: touchEvent.touches[0].clientX - rect.left,
+                y: touchEvent.touches[0].clientY - rect.top
             };
         }
 
@@ -115,52 +216,95 @@
             }
         }
 
-        async function uploadPDF(e) {
+
+
+
+        canvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            const pos = { x: e.offsetX, y: e.offsetY, moveTo: true };
+            drawSignature(pos);
+            sendSignatureData(pos);
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDrawing) return;
+            const pos = { x: e.offsetX, y: e.offsetY, moveTo: false };
+            drawSignature(pos);
+            sendSignatureData(pos);
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDrawing = false;
+        });
+
+        canvas.addEventListener('mouseout', () => {
+            isDrawing = false;
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            isDrawing = true;
+            const touchPos = getTouchPos(canvas, e);
+            const pos = { x: touchPos.x, y: touchPos.y, moveTo: true };
+            drawSignature(pos);
+            sendSignatureData(pos);
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (!isDrawing) return;
+            const touchPos = getTouchPos(canvas, e);
+            const pos = { x: touchPos.x, y: touchPos.y, moveTo: false };
+            drawSignature(pos);
+            sendSignatureData(pos);
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isDrawing = false;
+        });
+
+        canvas.addEventListener('touchcancel', () => {
+            isDrawing = false;
+        });
+
+        document.getElementById('clear').addEventListener('click', () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            isDrawing = false; // Ensure drawing stops when clearing the canvas
+            sendSignatureData({ clear: true });
+        });
+
+        document.getElementById('upload-pdf').addEventListener('change', async (e) => {
             const file = e.target.files[0];
             if (file) {
                 const formData = new FormData();
                 formData.append('file', file);
                 formData.append('sessionID', sessionID);
-
-                const response = await fetch(`${serverURL}/upload`, {
+                await fetch(`${serverURL}/upload`, {
                     method: 'POST',
                     body: formData
                 });
-
-                if (response.ok) {
-                    generateQRCode(generateSessionURL(sessionID));
-                } else {
-                    alert('Failed to upload PDF');
-                }
+                const sessionURL = generateSessionURL(sessionID);
+                generateQRCode(sessionURL);
             }
-        }
+        });
 
-        async function applySignature() {
+        document.getElementById('apply-signature').addEventListener('click', async () => {
             const signatureData = canvas.toDataURL('image/png');
-            const response = await fetch(`${serverURL}/apply-signature`, {
+            await fetch(`${serverURL}/apply-signature`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sessionID, signatureData })
             });
+            alert('Your signature has been sent.');
+        });
 
-            if (response.ok) {
-                alert('Your signature has been applied.');
-            } else {
-                alert('Failed to apply signature');
-            }
-        }
-
-        async function downloadPDF() {
+        document.getElementById('download-pdf').addEventListener('click', async () => {
             try {
                 const response = await fetch(`${serverURL}/download?sessionID=${sessionID}`);
                 if (response.ok) {
                     const blob = await response.blob();
-                    const link = document.createElement('a');
-                    link.href = URL.createObjectURL(blob);
-                    link.download = 'signed_document.pdf';
-                    document.body.appendChild(link);
-                    link.click();
-                    document.body.removeChild(link);
+                    const url = URL.createObjectURL(blob);
+                    window.open(url, '_blank');
                 } else {
                     const errorText = await response.text();
                     alert(`Failed to download PDF: ${errorText}`);
@@ -168,7 +312,7 @@
             } catch (error) {
                 alert(`Error occurred: ${error.message}`);
             }
-        }
+        });
 
         function generateSessionID() {
             return Math.random().toString(36).substring(2);
@@ -177,18 +321,41 @@
         function generateSessionURL(sessionID) {
             return `${window.location.origin}${window.location.pathname}?sessionId=${sessionID}`;
         }
-
+/*
         function generateQRCode(url) {
             const qrCodeContainer = document.getElementById('qrcode');
             qrCodeContainer.innerHTML = ''; // Clear existing QR code
+            document.getElementById("qr-message").style.display = 'block';
             new QRCode(qrCodeContainer, {
                 text: url,
                 width: 128,
                 height: 128
             });
         }
+            */
+            function generateQRCode(url) {
+        const qrCodeContainer = document.getElementById('qrcode');
+        qrCodeContainer.innerHTML = ''; // Clear existing QR code
+        document.getElementById("qr-message").style.display = 'block';
 
-        // Check if there is a session ID in the URL
+        const qrCode = new QRCodeStyling({
+            width: 200,
+            height: 200,
+            data: url,
+            dotsOptions: {
+                type: "rounded" // Custom pixel shape
+            },
+            image: "docusign-logo.svg", // Path to your DocuSign logo
+            imageOptions: {
+                crossOrigin: "anonymous",
+                margin: 20,
+                imageSize: 0.5 // Adjust the logo size (0.3 means 30% of the QR code size)
+
+            }
+        });
+
+        qrCode.append(qrCodeContainer);
+    }
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('sessionId')) {
             sessionID = urlParams.get('sessionId');
